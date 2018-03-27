@@ -1,0 +1,237 @@
+R 语言时间序列(总结了多本书和自己查找的，比较全面）
+
+
+library(urca)
+install.packages("forecast")
+
+data(nporg,package = "urca")
+###看自相关
+
+acf(x)
+acf(diff(x))
+acf(diff(log(x)))
+acf(diff(diff(x)))
+
+###检验平稳性
+library(tseries)
+y<-nporg
+y<-na.omit(y)
+attach(y)
+x<-cpi
+
+###adf 原假设不平稳(需要处理变量的技巧)，这个diff(log(x))才平稳
+  adf.test(x,alt="stationary")
+  adf.test(diff(x),alt="stationary")
+  adf.test(diff(log(x)),alt="stationary")
+###pp 一届差分就平稳了..
+  pp.test(x,alt="stationary")
+  pp.test(diff(x),alt="stationary")
+  pp.test(diff(log(x)),alt="stationary")
+  
+###KPSS 检验, 原假设跟adf和pp相反，为平稳
+  kpss.test(x,null="Level")
+  kpss.test(x,null="Trend")
+  kpss.test(diff(x),null="Level")
+  kpss.test(diff(x),null="Trend")
+  kpss.test(diff(log(x),null="Level"))
+  kpss.test(diff(log(x),null="Trend"))
+###自动选择平稳阶数(0,1,1)
+  library(forecast)
+  auto.arima(x)
+  
+###seasional decompose季节性成分，趋势分析，剩余误差成分
+  
+  bstl<-stl(x,"per")
+  plot(bstl,main="STL decomposition")
+### Holt-Winter滤波  ,做平滑或者分解成水平、趋势及季节,
+  require(graphics)
+   b1<-HoltWinters(x,seasonal = "multiplicative")
+   b1<-HoltWinters(x,seasonal = "additive")
+   plot(b1$fit)
+   e=b1$x-b1$fitted[,1]  ###因为[,1]是单变量的，通用
+   lines(density(b1),lwd=2)
+   qqnorm(e);
+   qqline(e);
+   plot(e,ylab="Residual")
+###对E这个残差做混成检验（portmanteau)，（它包括了BP,LB,Hosking,LiMcLeod,广义方差gvtest), 用来检验残差自相关
+###   Toeplitz矩阵（diagonal-constant matrix），指矩阵中每条自左上至右下的斜线上的元素相同。
+   ###install.packages("portes")
+   library(portes)
+   plot(gvtest(e,1:60)[,4])
+###使用predict做预测
+   p=predict(b1,72)
+   
+###ARMA model and ARIMA model (shenglue xian )
+   ARMAacf()
+   arima.sim()
+   
+   
+###状态空间模型和kalman滤波
+tsSmooth()  ###一元
+SSModel  ###二元局部
+KFS()   ###季节因素的局部水平多元模型
+
+
+   
+###长期记忆模型
+library(fracdiff)
+fracdiff()
+   
+   
+###garch模型
+library(TSA)
+Mcleod.Li.test()
+garchFit()
+library(fGarch)
+
+library(rugarch)
+ugarchchspec()
+ugarchfit()
+infocriteria()
+
+
+
+###     
+
+   
+###多元时间序列的基本概念和模型，拟合和预测
+library(urca)
+   ###Johansen Procedure for VAR,协整检验（协整变量小于变量数）
+   summary(ca.jo(nporg,type="trace",ecdet = "const")) 
+   summary(ca.jo(nporg,type="eigen",ecdet="const"))
+   ###Engle-Granger 协整检验,主要看残差是否为I(0),statistic为统计量
+   z=list()
+   for(i in 1:3)z[[i]]=lm(y[,i]~.,y[,-i])
+   for(i in 1:3)print(summary(z[[i]]))
+   library(urca)
+   z1=list()
+   for(i in 1:3)
+   {z1[[i]]=ur.df(z[[i]]$res);print(z1[[i]]@teststat);print(z1[[i]]@cval)}
+   ###Pillips-Ouliaris协整检验(不显著就是不存在协整关系）
+   zz=ca.po(sjd,demean="constant",type="Pu")    ###为了方差率
+   zz@cval;zz@teststat
+   zz=ca.po(sdj.demean="constant",type="Pz")    ###多元迹检验
+   zz1@cval;zz1@teststat
+   
+###granger casuality test
+   ###install.packages("MSBVAR")
+   library(MSBVAR)
+   granger.test(y,p=6)
+   
+###VAR,VARX install.packages("vars")
+   library(vars)
+   z=VAR(y,p=2,type="both")
+   zp=predict(z,n.ahead=1,ci=0.95)
+   plot(zp)
+   ###VARX model多元的VAR！  ###install.packages("dse")  一种矩阵输出方式，A(L)Yt=B(L)et+C(B)Xt
+   library(dse)
+   SOI<-TSdata(input=y[,2:9],output=y[,1])  ###回归y[,2:]
+   SOI.ls<-estVARXls(SOI,max.lag=2)
+   print(SOI.ls)
+   stability(SOI.ls)   ###找出特征根的稳定性
+   rr=checkResiduals(SOI.ls)
+   par(mfrow=c(1,2));acf(rr$re);pacf(rr$re)
+   ###VAR预测，数据方面有点问题
+   SOI.ls2<-estVARXls(window(x,end=c(2010,12)),max.lag=2) ###windows
+   S.p=forecast(SOI.ls2,conditioning.inputs=SOI$input)
+   tfplot(S.p)
+   S.p$forecast
+   ###用状态方程模型：
+   SOI.ss<-estSSfromVARX(SOI,max.lag=2)
+   print(SOI.ss)
+   stability(soi.ss)
+   par(mfrow=c(1,2));acf(rr$re);pacf(rr$re)
+   ###状态预测
+   S.ssp=forecast()
+   SOI.ss2<<-ssp$forecast
+   tfplot(S.ssp)
+###非线性时间序列(动力系统，混沌理论，差分方程，非线性时间序列)
+   install.packages("tsDyn")
+   ###线性AR模型
+   library(tsDyn)
+   x<-log10(lynx)
+  x.ar=linear(x,m=2); 
+  summary(x.ar)
+   ###threshold autoregressive model
+  selectSETAR(x,m=2)            ###
+  x.setar=setar(x,m=2,mL=2,mH=2,thDelay=1)
+  summary(x.setar)
+  (x.setar.p=predict(x.setar,n.ahead=10))
+  ###Hansen检验 作为零假设线性模型，备注假设为门限模型的自助法分布检验
+  Hansen=setarTest(lynx,m=1,nboot=1000)
+  summary(Hansen)
+  plot(Hansen)   
+###神经网络模型(单变量的情况吧)
+  set.seed(8)
+  sennet<-selectNNET(x,m=3,size=1:10)
+  max(sennet[,3])
+  
+  x.nnet=nnetTs(x,m=2,size=6)
+  summary(x.nnet)
+  x.nnet.p=predict(x.nnet,n.ahead=10)
+###可加AR模型
+  x.aar=aar(x,m=3);summary(x.arr)
+  (x.aar.p=predict(x.aar,n.ahead=10))
+ ###找出最好用的非线性模型AIC和mape(省略看p142)
+  mod<-list()
+###门限协整：“长期平衡，向量误差修正随机趋势。微小偏移导致超过临界门限，非对称性，正负偏移”
+  
+tvecm2=TVECM(y[,c(1,3)],nthresh=2,lag=1,ngridBeta = 60,ngridTh=30,plot=TRUE,trim=0.05)
+summary(tvecm2)
+###向量误差修正模型的检验
+z2=TVECM.HStest(y,lag=1,intercept = TRUE,nboot=100)
+summary(z2);
+plot(z2)
+
+  
+###谱分析
+install.packages("astsa")
+library(astsa)
+arma.spec()     ###谱密度
+spec.pgram()    ###谱密度估计
+
+
+   
+###结构转变断点检验 (univariate)
+   library(urca)
+   data(nporg)
+   za <- ur.za(y, model="both", lag=2)
+   summary(za)
+   
+ ###时间序列离群点检测
+f<-stl(x,"periodic",robust=TRUE)
+(outliers<-which(f$weights<1e-8))
+sts<-f$time.series
+
+
+###时间序列分析与挖掘
+
+
+###分解
+decompose()
+###预测
+arima()
+predict()
+
+###聚类(动态时间规整实现)
+library(dtw)
+idx<-seq(0,2*pi,len=100)
+a<-sin(idx)+runif(100)/10
+b<-cos(idx)
+align<-dtw(a,b,step=asymmetricP1,keep=T)
+dtwPlotTwoWay(align)
+###基于欧式距离的层次聚类
+hclust(dist(),method="average")
+cutree()
+###时间序列分类  
+library(party)
+ctree() 	###基于原始数据分类
+###基于特征提取的分类
+library(wavelets)
+dwt()
+ctree()
+ctree_control()
+###k-nn分类
+dist()
+sort()
+table()
